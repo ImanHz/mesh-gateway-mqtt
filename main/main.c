@@ -6,6 +6,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_system.h"
+#include "gpio.h"
 #include "mqtt.h"
 #include "nvs_flash.h"
 #include "uart.h"
@@ -13,7 +14,7 @@
 
 void app_main(void) {
   uart_init(mqtt_callback);
-
+  /* init_gpio(); */
   ESP_LOGI(TAG, "[APP] Startup..");
   ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes",
            esp_get_free_heap_size());

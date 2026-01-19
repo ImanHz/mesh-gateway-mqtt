@@ -13,8 +13,8 @@ static const int RX_BUF_SIZE = 1024;
 #define UART_BAUDRATE 115200
 // mcu uart connection pinout
 
-#define TXD_PIN 19
-#define RXD_PIN 18
+#define TXD_PIN 18
+#define RXD_PIN 19
 
 // FreeRTOS memory size
 #define RX_TASK_SIZE 3072
