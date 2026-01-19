@@ -1,0 +1,6 @@
+#ifndef INCLUDE_INCLUDE_MAIN_H_
+#define INCLUDE_INCLUDE_MAIN_H_
+
+#define TAG "MAIN"
+
+#endif // INCLUDE_INCLUDE_MAIN_H_
