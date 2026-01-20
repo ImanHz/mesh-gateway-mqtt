@@ -1,33 +1,16 @@
 #include "mqtt.h"
+#include "esp_err.h"
 #include "esp_log.h"
+#include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "mqtt_client.h"
+#include <time.h>
 
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 
 /* extern const uint8_t cert_pem_start[] asm("_binary_cert_pem_start"); */
 /* extern const uint8_t cert_pem_end[] asm("_binary_cert_pem_end"); */
-const uint8_t cert_pem_start[] =
-    "-----BEGIN CERTIFICATE-----\n"
-    "MIIDazCCAlOgAwIBAgIUb0OkuvpNhuW0RzTJW61alo9IrxgwDQYJKoZIhvcNAQEL\n"
-    "BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM\n"
-    "GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yNjAxMTMxMTEwMzdaFw0yNjAy\n"
-    "MTIxMTEwMzdaMEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEw\n"
-    "HwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwggEiMA0GCSqGSIb3DQEB\n"
-    "AQUAA4IBDwAwggEKAoIBAQDVX7SezSPQxWB+5wOwC+Xr/CE0JA/1GR9XbQ8LD77Y\n"
-    "z8QsbwnF6CBI0/hlw73KEi/UYlMjHzd1eHafSmJEDq9XaemTFSCIbipyYhyxZRvt\n"
-    "1Mge5doWpWaytTKzgoODt5cPaK3g1NRY1mkJrp+xjCgxNW5BbPkr4NhEGKbocDWG\n"
-    "LtL5V5yAQcn3gIGE+mTJyGACQtW21KB8kgJHkguc1tjm5eiftlxVe0rUWMwo7JSI\n"
-    "o0c/nwe6E214Sk5CO8XkDrtozdOIajKsKnvvydoI5Ey7Gb1e5IipXtA5rD01Bcbw\n"
-    "jw1A0b51Ou5Y7qzXUJ6NKgsW3bPF2Cr/YQM8ui7NqfFPAgMBAAGjUzBRMB0GA1Ud\n"
-    "DgQWBBTaJs70sjaUDMkBuYsrtTraerFvWzAfBgNVHSMEGDAWgBTaJs70sjaUDMkB\n"
-    "uYsrtTraerFvWzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQBU\n"
-    "CsZGCu+y+FqSVDI+FC3e423udKtANnEstyhgMyOck+OVSTj7iz2oLcChT1Siz7/q\n"
-    "N9V/7t7vDJd05S38MM7elhQpNe3T1IeGe1j6ZPYL08apoyCoN1ByI5s5FAwugQXu\n"
-    "bg4jHYp7LM6zfmiv9mqDo/xxDVlaRImohgaW50XYFDVBLmq/OTpggqVJtDYGaiPX\n"
-    "gY7zxloZsjDbZsXaOtjTGZZoax+9VJI0N9B3/E+3qpkz/PVoIgvd7cb0z8jkRpAD\n"
-    "ZDbsPfXl9ogFKMS166kzMLi3n7Hg/WD6AgRRaJqW01FJSj8W/AJCXmkgT7Fjf3I/\n"
-    "wFTrVz1YAhziHvM8UT7O\n"
-    "-----END CERTIFICATE-----\n";
+
 /* Set connection properties and user properties */
 static esp_mqtt5_user_property_item_t user_property_arr[] = {
     {"board", "esp32"}, {"u", "user"}, {"p", "password"}};
@@ -150,6 +133,16 @@ void mqtt5_app_start(void) {
       .session.last_will.retain = true,
   };
 
+  esp_sntp_config_t sntp_config = {.server_from_dhcp = true,
+                                   .smooth_sync = true,
+                                   .start = true,
+                                   .wait_for_sync = true};
+  esp_netif_init();
+  esp_err_t err = esp_netif_sntp_init(&sntp_config);
+  if (err != ESP_OK) {
+
+    ESP_LOGE("sntp", "error init. sntp, %s", esp_err_to_name(err));
+  }
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt5_cfg);
 
   esp_mqtt5_client_set_user_property(&connect_property.user_property,
@@ -177,11 +170,19 @@ void mqtt_callback(const uint8_t *msg, int len) {
     ESP_LOGE("MQTT callback", "empty client");
   }
 
+  time_t now = 0;
+  struct tm timeinfo = {0};
+  time(&now);
+  localtime_r(&now, &timeinfo);
+  ESP_LOGI("TIME", "%d %d %d %d %d", timeinfo.tm_year + 1900,
+           timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour,
+           timeinfo.tm_min);
   esp_mqtt5_client_set_user_property(&publish_property.user_property,
                                      user_property_arr, USE_PROPERTY_ARR_SIZE);
   esp_mqtt5_client_set_publish_property(mqtt_client, &publish_property);
   int msg_id = esp_mqtt_client_publish(mqtt_client, "/topic/qos1",
                                        (const char *)msg, len, 1, 1);
+
   esp_mqtt5_client_delete_user_property(publish_property.user_property);
   publish_property.user_property = NULL;
   ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id=%d", msg_id);
