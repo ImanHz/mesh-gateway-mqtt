@@ -12,8 +12,9 @@ static esp_mqtt_client_handle_t mqtt_client = NULL;
 static volatile bool s_time_synced = false;
 static app_config_t s_mqtt_cfg;
 
-/* extern const uint8_t cert_pem_start[] asm("_binary_cert_pem_start"); */
-/* extern const uint8_t cert_pem_end[] asm("_binary_cert_pem_end"); */
+extern const uint8_t ca_pem_start[] asm("_binary_ca_pem_start");
+extern const uint8_t cert_pem_start[] asm("_binary_cert_pem_start");
+extern const uint8_t key_pem_start[] asm("_binary_key_pem_start");
 
 /* Set connection properties and user properties */
 static esp_mqtt5_user_property_item_t user_property_arr[] = {
@@ -90,8 +91,17 @@ void mqtt5_app_start(const app_config_t *cfg) {
       .message_expiry_interval = MQTT_MSG_EXPIRY_SEC,
   };
 
+  /* Warn if broker URL is plaintext */
+  if (strncmp(cfg->broker_url, "mqtts://", 8) != 0 &&
+      strncmp(cfg->broker_url, "wss://", 6) != 0) {
+    ESP_LOGW(MQTT_TAG, "Broker URL is not TLS: %s", cfg->broker_url);
+  }
+
   esp_mqtt_client_config_t mqtt5_cfg = {
       .broker.address.uri = cfg->broker_url,
+      .broker.verification.certificate = (const char *)ca_pem_start,
+      .credentials.authentication.certificate = (const char *)cert_pem_start,
+      .credentials.authentication.key = (const char *)key_pem_start,
       .session.protocol_ver = MQTT_PROTOCOL_V_5,
       .network.disable_auto_reconnect = false,
       .session.last_will.topic = cfg->will_topic,
@@ -111,6 +121,17 @@ void mqtt5_app_start(const app_config_t *cfg) {
 
     ESP_LOGE(MQTT_TAG, "SNTP init error: %s", esp_err_to_name(err));
   }
+
+  /* Wait for NTP sync before starting MQTT — TLS cert validation needs
+   * correct time.  30s is generous; typical sync is 1-2s on LAN. */
+  if (!s_time_synced) {
+    ESP_LOGI(MQTT_TAG, "Waiting for NTP sync...");
+    esp_netif_sntp_sync_wait(pdMS_TO_TICKS(MQTT_NTP_SYNC_TIMEOUT_MS));
+    if (!s_time_synced) {
+      ESP_LOGW(MQTT_TAG, "NTP sync timeout, MQTT will retry after sync");
+    }
+  }
+
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt5_cfg);
 
   esp_mqtt5_client_set_user_property(&connect_property.user_property,

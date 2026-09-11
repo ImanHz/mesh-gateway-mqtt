@@ -14,6 +14,7 @@
 #define MQTT_WILL_DELAY_SEC 10
 #define MQTT_MSG_EXPIRY_SEC 10
 #define MQTT_PUBLISH_MSG_EXPIRY_SEC 1000
+#define MQTT_NTP_SYNC_TIMEOUT_MS 30000
 
 void mqtt5_app_start(const app_config_t *cfg);
 void mqtt_callback(const uint8_t *msg, size_t len);
