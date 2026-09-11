@@ -25,6 +25,7 @@ void app_main(void) {
 
   if (wifi_connect() != ESP_OK) {
     ESP_LOGE("MAIN", "WIFI CONNECT ERROR");
+    return;
   }
   ESP_ERROR_CHECK(esp_register_shutdown_handler(&wifi_shutdown));
 

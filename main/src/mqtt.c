@@ -7,6 +7,8 @@
 #include <time.h>
 
 static esp_mqtt_client_handle_t mqtt_client = NULL;
+// Written by SNTP sync callback, read by mqtt_callback — different tasks, hence volatile
+static volatile bool s_time_synced = false;
 
 /* extern const uint8_t cert_pem_start[] asm("_binary_cert_pem_start"); */
 /* extern const uint8_t cert_pem_end[] asm("_binary_cert_pem_end"); */
@@ -29,6 +31,11 @@ static esp_mqtt5_disconnect_property_config_t disconnect_property = {
     .session_expiry_interval = 60,
     .disconnect_reason = 0,
 };
+
+static void sntp_time_sync_cb(struct timeval *tv) {
+  s_time_synced = true;
+  ESP_LOGI(MQTT_TAG, "SNTP time synchronized");
+}
 
 static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
                                 int32_t event_id, void *event_data) {
@@ -136,7 +143,8 @@ void mqtt5_app_start(void) {
   esp_sntp_config_t sntp_config = {.server_from_dhcp = true,
                                    .smooth_sync = true,
                                    .start = true,
-                                   .wait_for_sync = true};
+                                   .wait_for_sync = false,
+                                   .sync_cb = sntp_time_sync_cb};
   esp_err_t err = esp_netif_sntp_init(&sntp_config);
   if (err != ESP_OK) {
 
@@ -167,6 +175,11 @@ void mqtt5_app_start(void) {
 void mqtt_callback(const uint8_t *msg, int len) {
   if (!mqtt_client) {
     ESP_LOGE("MQTT callback", "empty client");
+    return;
+  }
+
+  if (!s_time_synced) {
+    ESP_LOGW(MQTT_TAG, "NTP not synced yet, skipping publish");
     return;
   }
 
