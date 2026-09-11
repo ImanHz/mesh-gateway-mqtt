@@ -4,7 +4,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
-static const char *TAG = "connect";
+static const char *TAG = "WIFI";
 static esp_netif_t *s_sta_netif = NULL;
 static SemaphoreHandle_t s_semph_get_ip_addrs = NULL;
 static esp_timer_handle_t s_reconnect_timer = NULL;

@@ -1,9 +1,0 @@
-#ifndef INCLUDE_INCLUDE_GPIO_H_
-#define INCLUDE_INCLUDE_GPIO_H_
-
-#define GPIO_INPUT_IO_0 4
-#define GPIO_INPUT_PIN_SEL (1ULL << GPIO_INPUT_IO_0)
-#define ESP_INTR_FLAG_DEFAULT 0
-
-void init_gpio(void);
-#endif // INCLUDE_INCLUDE_GPIO_H_

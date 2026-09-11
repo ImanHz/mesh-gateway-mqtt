@@ -2,11 +2,10 @@
 #define PDN_UART_H_
 
 #include "driver/uart.h"
-// tag used for mcu connection
-// #define UART_TAG(x) GREEN_BG("UART_" x)
+#include <stddef.h>
 
 // maximum uart rx buffer size
-static const int RX_BUF_SIZE = 1024;
+#define RX_BUF_SIZE 1024
 
 // uart number. NUM_0 is used for debugging
 #define UART_NUM UART_NUM_1
@@ -21,7 +20,7 @@ static const int RX_BUF_SIZE = 1024;
 #define TX_TASK_SIZE 3072
 
 typedef struct {
-  int len;
+  size_t len;
   uint8_t *data;
 } uart_msg_t;
 // UART rx timeout. The message is assumed as received whether after this
@@ -29,7 +28,7 @@ typedef struct {
 #define UART_RX_TIMEOUT 100 // in milliseconds
 
 // callback for RX
-typedef void (*uart_callback_t)(const uint8_t *data, int len);
+typedef void (*uart_callback_t)(const uint8_t *data, size_t len);
 
 typedef struct {
   QueueHandle_t queue;
@@ -40,6 +39,6 @@ typedef struct {
 void uart_init(uart_callback_t);
 
 // helper function to send data
-int uart_send_data(const char *data, uint8_t len);
+int uart_send_data(const char *data, size_t len);
 
 #endif

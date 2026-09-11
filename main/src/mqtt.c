@@ -22,7 +22,7 @@ static esp_mqtt5_user_property_item_t user_property_arr[] = {
   sizeof(user_property_arr) / sizeof(esp_mqtt5_user_property_item_t)
 static esp_mqtt5_publish_property_config_t publish_property = {
     .payload_format_indicator = 1,
-    .message_expiry_interval = 1000,
+    .message_expiry_interval = MQTT_PUBLISH_MSG_EXPIRY_SEC,
     .topic_alias = 0,
 };
 
@@ -81,13 +81,13 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
 void mqtt5_app_start(const app_config_t *cfg) {
   memcpy(&s_mqtt_cfg, cfg, sizeof(s_mqtt_cfg));
   esp_mqtt5_connection_property_config_t connect_property = {
-      .session_expiry_interval = 10,
-      .maximum_packet_size = 1024,
-      .receive_maximum = 65535,
-      .topic_alias_maximum = 2,
-      .will_delay_interval = 10,
+      .session_expiry_interval = MQTT_SESSION_EXPIRY_SEC,
+      .maximum_packet_size = MQTT_MAX_PACKET_SIZE,
+      .receive_maximum = MQTT_RECEIVE_MAXIMUM,
+      .topic_alias_maximum = MQTT_TOPIC_ALIAS_MAXIMUM,
+      .will_delay_interval = MQTT_WILL_DELAY_SEC,
       .payload_format_indicator = true,
-      .message_expiry_interval = 10,
+      .message_expiry_interval = MQTT_MSG_EXPIRY_SEC,
   };
 
   esp_mqtt_client_config_t mqtt5_cfg = {
@@ -109,7 +109,7 @@ void mqtt5_app_start(const app_config_t *cfg) {
   esp_err_t err = esp_netif_sntp_init(&sntp_config);
   if (err != ESP_OK) {
 
-    ESP_LOGE("sntp", "error init. sntp, %s", esp_err_to_name(err));
+    ESP_LOGE(MQTT_TAG, "SNTP init error: %s", esp_err_to_name(err));
   }
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt5_cfg);
 
@@ -133,9 +133,9 @@ void mqtt5_app_start(const app_config_t *cfg) {
   esp_mqtt_client_start(client);
 }
 
-void mqtt_callback(const uint8_t *msg, int len) {
+void mqtt_callback(const uint8_t *msg, size_t len) {
   if (!mqtt_client) {
-    ESP_LOGE("MQTT callback", "empty client");
+    ESP_LOGE(MQTT_TAG, "empty client");
     return;
   }
 
@@ -148,7 +148,7 @@ void mqtt_callback(const uint8_t *msg, int len) {
   struct tm timeinfo = {0};
   time(&now);
   localtime_r(&now, &timeinfo);
-  ESP_LOGI("TIME", "%d %d %d %d %d", timeinfo.tm_year + 1900,
+  ESP_LOGI(MQTT_TAG, "time: %d-%02d-%02d %02d:%02d", timeinfo.tm_year + 1900,
            timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour,
            timeinfo.tm_min);
   esp_mqtt5_client_set_user_property(&publish_property.user_property,

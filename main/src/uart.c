@@ -4,6 +4,8 @@
 #include "esp_log_buffer.h"
 #include "freertos/idf_additions.h"
 #include "string.h"
+
+static const char *TAG = "UART";
 const uint16_t c_uart_rx_timeout = UART_RX_TIMEOUT;
 
 static void uart_rx_task(void *arg) {
@@ -11,7 +13,7 @@ static void uart_rx_task(void *arg) {
 
   uint8_t *buf = (uint8_t *)malloc(RX_BUF_SIZE + 1);
   if (!buf) {
-    ESP_LOGE(("RX_TASK"), "Failed to allocate memory");
+    ESP_LOGE(TAG, "Failed to allocate memory");
     vTaskDelete(NULL);
   }
 
@@ -19,12 +21,12 @@ static void uart_rx_task(void *arg) {
     int rxBytes = uart_read_bytes(UART_NUM_1, buf, RX_BUF_SIZE,
                                   (c_uart_rx_timeout) / portTICK_PERIOD_MS);
     if (rxBytes > 0) {
-      ESP_LOGI(("RX_TASK"), "Read %d bytes", rxBytes);
+      ESP_LOGI(TAG, "Read %d bytes", rxBytes);
       ESP_LOG_BUFFER_HEX("RX", buf, rxBytes);
 
       uint8_t *data = malloc(rxBytes);
       if (!data) {
-        ESP_LOGE(("RX_TASK"), "Failed to allocate msg data");
+        ESP_LOGE(TAG, "Failed to allocate msg data");
         continue;
       }
       memcpy(data, buf, rxBytes);
@@ -36,7 +38,7 @@ static void uart_rx_task(void *arg) {
 
       // Send to queue
       if (xQueueSend(params->queue, &msg, 0) != pdTRUE) {
-        ESP_LOGW(("RX_TASK"), "Queue full, message dropped");
+        ESP_LOGW(TAG, "Queue full, message dropped");
         free(data);
       }
     }
@@ -71,7 +73,7 @@ void uart_init(uart_callback_t callback) {
   esp_err_t uart_error =
       uart_driver_install(UART_NUM, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
   if (uart_error != ESP_OK) {
-    ESP_LOGE(("INIT"), "uart error: %d", uart_error);
+    ESP_LOGE(TAG, "uart error: %d", uart_error);
   }
   uart_param_config(UART_NUM, &uart_config);
   uart_set_pin(UART_NUM, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE,
@@ -87,11 +89,11 @@ void uart_init(uart_callback_t callback) {
 
   xTaskCreate(uart_callback_task, "uart_callback_task", RX_TASK_SIZE, params,
               configMAX_PRIORITIES - 2, NULL);
-  ESP_LOGI(("INIT"), "uart init successful");
+  ESP_LOGI(TAG, "uart init successful");
 }
 
-int uart_send_data(const char *data, uint8_t len) {
+int uart_send_data(const char *data, size_t len) {
   const int txBytes = uart_write_bytes(UART_NUM_1, data, len);
-  ESP_LOGI(("SEND"), "Wrote %d bytes", txBytes);
+  ESP_LOGI(TAG, "Wrote %d bytes", txBytes);
   return txBytes;
 }
