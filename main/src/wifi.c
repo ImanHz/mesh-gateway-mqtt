@@ -2,37 +2,59 @@
 #include "wifi.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 static const char *TAG = "connect";
 static esp_netif_t *s_sta_netif = NULL;
 static SemaphoreHandle_t s_semph_get_ip_addrs = NULL;
+static esp_timer_handle_t s_reconnect_timer = NULL;
 
 static int s_retry_num = 0;
 
+static void wifi_reconnect_timer_cb(void *arg) {
+  esp_err_t err = esp_wifi_connect();
+  if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
+    ESP_LOGE(TAG, "WiFi reconnect failed: %s", esp_err_to_name(err));
+  }
+}
+
 static void handler_on_wifi_disconnect(void *arg, esp_event_base_t event_base,
                                        int32_t event_id, void *event_data) {
-  s_retry_num++;
-  if (s_retry_num > CONFIG_WIFI_CONN_MAX_RETRY) {
-    ESP_LOGI(TAG, "WiFi Connect failed %d times, stop reconnect.", s_retry_num);
-    /* let wifi_sta_do_connect() return */
-    if (s_semph_get_ip_addrs) {
-      xSemaphoreGive(s_semph_get_ip_addrs);
-    }
-    wifi_sta_do_disconnect();
-    return;
-  }
   wifi_event_sta_disconnected_t *disconn = event_data;
   if (disconn->reason == WIFI_REASON_ROAMING) {
     ESP_LOGD(TAG, "station roaming, do nothing");
     return;
   }
-  ESP_LOGI(TAG, "Wi-Fi disconnected %d, trying to reconnect...",
-           disconn->reason);
-  esp_err_t err = esp_wifi_connect();
-  if (err == ESP_ERR_WIFI_NOT_STARTED) {
+
+  s_retry_num++;
+  if (s_retry_num > CONFIG_WIFI_CONN_MAX_RETRY + 1) {
+    s_retry_num = CONFIG_WIFI_CONN_MAX_RETRY + 1;
+  }
+
+  ESP_LOGI(TAG, "Wi-Fi disconnected (reason %d), attempt %d", disconn->reason,
+           s_retry_num);
+
+  /* During initial blocking connect, give up after MAX_RETRY and let caller
+   * return.  Don't unregister handlers — the timer keeps trying. */
+  if (s_semph_get_ip_addrs && s_retry_num > CONFIG_WIFI_CONN_MAX_RETRY) {
+    ESP_LOGI(TAG, "WiFi connect failed %d times during boot", s_retry_num);
+    xSemaphoreGive(s_semph_get_ip_addrs);
     return;
   }
-  ESP_ERROR_CHECK(err);
+
+  /* Fast retries (immediate) up to MAX_RETRY */
+  if (s_retry_num <= CONFIG_WIFI_CONN_MAX_RETRY) {
+    esp_err_t err = esp_wifi_connect();
+    if (err == ESP_ERR_WIFI_NOT_STARTED) {
+      return;
+    }
+    ESP_ERROR_CHECK(err);
+    return;
+  }
+
+  /* Beyond MAX_RETRY: backoff via timer (non-blocking, no event-loop stall) */
+  ESP_LOGI(TAG, "WiFi reconnecting in 5s...");
+  esp_timer_start_once(s_reconnect_timer, 5000000);
 }
 
 static bool is_our_netif(const char *prefix, esp_netif_t *netif) {
@@ -74,9 +96,20 @@ static void wifi_start(void) {
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_start());
+
+  esp_timer_create_args_t timer_args = {
+      .callback = wifi_reconnect_timer_cb,
+      .name = "wifi_reconnect",
+  };
+  ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_reconnect_timer));
 }
 
 static void wifi_stop(void) {
+  if (s_reconnect_timer) {
+    esp_timer_stop(s_reconnect_timer);
+    esp_timer_delete(s_reconnect_timer);
+    s_reconnect_timer = NULL;
+  }
   esp_err_t err = esp_wifi_stop();
   if (err == ESP_ERR_WIFI_NOT_INIT) {
     return;
