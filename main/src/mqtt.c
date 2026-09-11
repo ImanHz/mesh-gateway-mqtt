@@ -24,14 +24,6 @@ static esp_mqtt5_publish_property_config_t publish_property = {
     .payload_format_indicator = 1,
     .message_expiry_interval = 1000,
     .topic_alias = 0,
-    .response_topic = "/topic/test/response",
-    .correlation_data = "123456",
-    .correlation_data_len = 6,
-};
-
-static esp_mqtt5_disconnect_property_config_t disconnect_property = {
-    .session_expiry_interval = 60,
-    .disconnect_reason = 0,
 };
 
 static void sntp_time_sync_cb(struct timeval *tv) {
@@ -45,8 +37,6 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
            "Event dispatched from event loop base=%s, event_id=%" PRIi32, base,
            event_id);
   esp_mqtt_event_handle_t event = event_data;
-  esp_mqtt_client_handle_t client = event->client;
-  int msg_id;
 
   ESP_LOGD(MQTT_TAG, "free heap size is %" PRIu32 ", minimum %" PRIu32,
            esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
@@ -62,35 +52,15 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
     break;
   case MQTT_EVENT_SUBSCRIBED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-    esp_mqtt5_client_set_publish_property(client, &publish_property);
-    msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
-    ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id=%d", msg_id);
     break;
   case MQTT_EVENT_UNSUBSCRIBED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
-    esp_mqtt5_client_set_user_property(&disconnect_property.user_property,
-                                       user_property_arr,
-                                       USE_PROPERTY_ARR_SIZE);
-    esp_mqtt5_client_set_disconnect_property(client, &disconnect_property);
-    esp_mqtt5_client_delete_user_property(disconnect_property.user_property);
-    disconnect_property.user_property = NULL;
-    esp_mqtt_client_disconnect(client);
     break;
   case MQTT_EVENT_PUBLISHED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
     break;
   case MQTT_EVENT_DATA:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA");
-    ESP_LOGI(MQTT_TAG, "payload_format_indicator is %d",
-             event->property->payload_format_indicator);
-    ESP_LOGI(MQTT_TAG, "response_topic is %.*s",
-             event->property->response_topic_len,
-             event->property->response_topic);
-    ESP_LOGI(MQTT_TAG, "correlation_data is %.*s",
-             event->property->correlation_data_len,
-             event->property->correlation_data);
-    ESP_LOGI(MQTT_TAG, "content_type is %.*s",
-             event->property->content_type_len, event->property->content_type);
     ESP_LOGI(MQTT_TAG, "TOPIC=%.*s", event->topic_len, event->topic);
     ESP_LOGI(MQTT_TAG, "DATA=%.*s", event->data_len, event->data);
     break;
@@ -115,15 +85,9 @@ void mqtt5_app_start(const app_config_t *cfg) {
       .maximum_packet_size = 1024,
       .receive_maximum = 65535,
       .topic_alias_maximum = 2,
-      .request_resp_info = true,
-      .request_problem_info = true,
       .will_delay_interval = 10,
       .payload_format_indicator = true,
       .message_expiry_interval = 10,
-      .response_topic = "/test/response",
-      .correlation_data = "123456",
-      .correlation_data_len = 6,
-
   };
 
   esp_mqtt_client_config_t mqtt5_cfg = {
