@@ -24,8 +24,8 @@ void app_main(void) {
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
   // Check if reset button is held → force provisioning
-  bool force_provision = provision_button_held();
-  if (force_provision) {
+  bool button_held = provision_button_held();
+  if (button_held) {
     ESP_LOGW(TAG, "Reset button held, clearing provisioning config");
     config_clear_provisioned();
   }
@@ -35,10 +35,14 @@ void app_main(void) {
   bool provisioned = config_read(&cfg);
 
   if (!provisioned) {
-    // No config in NVS → enter SoftAP provisioning
-    ESP_LOGW(TAG, "Not provisioned, entering provisioning mode");
-    provision_start(); // blocks until done, then restarts
-    return;           // unreachable
+    if (button_held) {
+      ESP_LOGW(TAG, "Not provisioned, entering provisioning mode");
+      provision_start(); // blocks until done, then restarts
+      return;           // unreachable
+    }
+    ESP_LOGE(TAG, "Not provisioned and reset button not held. "
+                  "Hold reset button to enter provisioning mode.");
+    return;
   }
 
   // Normal boot: start UART, WiFi, MQTT
