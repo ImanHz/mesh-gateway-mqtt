@@ -137,7 +137,6 @@ void mqtt5_app_start(void) {
                                    .smooth_sync = true,
                                    .start = true,
                                    .wait_for_sync = true};
-  esp_netif_init();
   esp_err_t err = esp_netif_sntp_init(&sntp_config);
   if (err != ESP_OK) {
 
@@ -168,6 +167,7 @@ void mqtt5_app_start(void) {
 void mqtt_callback(const uint8_t *msg, int len) {
   if (!mqtt_client) {
     ESP_LOGE("MQTT callback", "empty client");
+    return;
   }
 
   time_t now = 0;

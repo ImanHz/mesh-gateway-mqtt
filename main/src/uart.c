@@ -19,17 +19,25 @@ static void uart_rx_task(void *arg) {
     int rxBytes = uart_read_bytes(UART_NUM_1, buf, RX_BUF_SIZE,
                                   (c_uart_rx_timeout) / portTICK_PERIOD_MS);
     if (rxBytes > 0) {
-      buf[rxBytes] = '\0';
       ESP_LOGI(("RX_TASK"), "Read %d bytes", rxBytes);
       ESP_LOG_BUFFER_HEX("RX", buf, rxBytes);
-      uart_msg_t msg = {};
-      msg.len = rxBytes;
-      /* memcpy(msg.data, buf, rxBytes + 1); */
-      msg.data = buf;
+
+      uint8_t *data = malloc(rxBytes);
+      if (!data) {
+        ESP_LOGE(("RX_TASK"), "Failed to allocate msg data");
+        continue;
+      }
+      memcpy(data, buf, rxBytes);
+
+      uart_msg_t msg = {
+        .len = rxBytes,
+        .data = data,
+      };
 
       // Send to queue
       if (xQueueSend(params->queue, &msg, 0) != pdTRUE) {
         ESP_LOGW(("RX_TASK"), "Queue full, message dropped");
+        free(data);
       }
     }
   }
@@ -41,12 +49,12 @@ static void uart_rx_task(void *arg) {
 static void uart_callback_task(void *arg) {
   uart_task_params_t *params = (uart_task_params_t *)arg;
   uart_msg_t msg = {};
-
   while (1) {
     if (xQueueReceive(params->queue, &msg, portMAX_DELAY)) {
       if (params->callback) {
         params->callback(msg.data, msg.len);
       }
+      free(msg.data);
     }
   }
 }

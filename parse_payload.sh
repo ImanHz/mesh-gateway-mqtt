@@ -39,7 +39,7 @@ rssi=$(( rssi_raw - 128 ))
 
 # --- Output ---
 printf '{'
-printf '"timestamp":%s,' "$rfc_time"
+printf '"timestamp":"%s",' "$rfc_time"
 printf '"value":%d,' "$value"
 printf '"address":%d,' "$addr"
 printf '"rssi":%d' "$rssi"
