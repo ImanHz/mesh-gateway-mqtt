@@ -4,11 +4,13 @@
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "mqtt_client.h"
+#include <string.h>
 #include <time.h>
 
 static esp_mqtt_client_handle_t mqtt_client = NULL;
 // Written by SNTP sync callback, read by mqtt_callback — different tasks, hence volatile
 static volatile bool s_time_synced = false;
+static app_config_t s_mqtt_cfg;
 
 /* extern const uint8_t cert_pem_start[] asm("_binary_cert_pem_start"); */
 /* extern const uint8_t cert_pem_end[] asm("_binary_cert_pem_end"); */
@@ -106,7 +108,8 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
     break;
   }
 }
-void mqtt5_app_start(void) {
+void mqtt5_app_start(const app_config_t *cfg) {
+  memcpy(&s_mqtt_cfg, cfg, sizeof(s_mqtt_cfg));
   esp_mqtt5_connection_property_config_t connect_property = {
       .session_expiry_interval = 10,
       .maximum_packet_size = 1024,
@@ -124,18 +127,12 @@ void mqtt5_app_start(void) {
   };
 
   esp_mqtt_client_config_t mqtt5_cfg = {
-      .broker.address.uri = CONFIG_BROKER_URL,
-      /* .broker.verification.certificate = (const char *)cert_pem_start, */
-      /* .broker.verification.skip_cert_common_name_check = true, */
-      /* .broker.verification.use_global_ca_store = false, */
-      /* .credentials.client_id = "pisys1", */
+      .broker.address.uri = cfg->broker_url,
       .session.protocol_ver = MQTT_PROTOCOL_V_5,
       .network.disable_auto_reconnect = false,
-      /* .credentials.username = "123", */
-      /* .credentials.authentication.password = "456", */
-      .session.last_will.topic = "/topic/will",
-      .session.last_will.msg = "i will leave",
-      .session.last_will.msg_len = 12,
+      .session.last_will.topic = cfg->will_topic,
+      .session.last_will.msg = "offline",
+      .session.last_will.msg_len = 7,
       .session.last_will.qos = 1,
       .session.last_will.retain = true,
   };
@@ -193,7 +190,7 @@ void mqtt_callback(const uint8_t *msg, int len) {
   esp_mqtt5_client_set_user_property(&publish_property.user_property,
                                      user_property_arr, USE_PROPERTY_ARR_SIZE);
   esp_mqtt5_client_set_publish_property(mqtt_client, &publish_property);
-  int msg_id = esp_mqtt_client_publish(mqtt_client, "/topic/qos1",
+  int msg_id = esp_mqtt_client_publish(mqtt_client, s_mqtt_cfg.pub_topic,
                                        (const char *)msg, len, 1, 1);
 
   esp_mqtt5_client_delete_user_property(publish_property.user_property);

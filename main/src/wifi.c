@@ -176,19 +176,21 @@ void wifi_shutdown(void) {
   wifi_stop();
 }
 
-esp_err_t wifi_connect(void) {
-  ESP_LOGI(TAG, "Start connect.");
+esp_err_t wifi_connect(const app_config_t *cfg) {
+  ESP_LOGI(TAG, "Start connect to %s.", cfg->ssid);
   wifi_start();
   wifi_config_t wifi_config = {
       .sta =
           {
-              .ssid = SSID,
-              .password = PASSWORD,
               .scan_method = WIFI_ALL_CHANNEL_SCAN,
               .sort_method = WIFI_CONNECT_AP_BY_SIGNAL,
               .threshold.rssi = -127,
               .threshold.authmode = WIFI_AUTH_OPEN,
           },
   };
+  strncpy((char *)wifi_config.sta.ssid, cfg->ssid,
+          sizeof(wifi_config.sta.ssid));
+  strncpy((char *)wifi_config.sta.password, cfg->password,
+          sizeof(wifi_config.sta.password));
   return wifi_sta_do_connect(wifi_config, true);
 }
