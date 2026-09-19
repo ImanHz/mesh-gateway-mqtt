@@ -4,11 +4,11 @@
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "mqtt_client.h"
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
 static esp_mqtt_client_handle_t mqtt_client = NULL;
-// Written by SNTP sync callback, read by mqtt_callback — different tasks, hence volatile
 static volatile bool s_time_synced = false;
 static app_config_t s_mqtt_cfg;
 
@@ -16,7 +16,6 @@ extern const uint8_t ca_pem_start[] asm("_binary_ca_pem_start");
 extern const uint8_t cert_pem_start[] asm("_binary_cert_pem_start");
 extern const uint8_t key_pem_start[] asm("_binary_key_pem_start");
 
-/* Set connection properties and user properties */
 static esp_mqtt5_user_property_item_t user_property_arr[] = {
     {"board", "esp32"}, {"u", "user"}, {"p", "password"}};
 #define USE_PROPERTY_ARR_SIZE                                                  \
@@ -26,6 +25,54 @@ static esp_mqtt5_publish_property_config_t publish_property = {
     .message_expiry_interval = MQTT_PUBLISH_MSG_EXPIRY_SEC,
     .topic_alias = 0,
 };
+
+/*
+ * UART packet format from mesh-client (13 bytes):
+ *   [0xFF] [3B MPID] [2B distance_mm LE] [2B src_addr LE] [1B rssi+128] [0xFE]
+ *
+ * The 5-byte mesh payload is: MPID(3) + distance(2 LE)
+ * MPID encodes the BLE Mesh Sensor Data Format B header.
+ * We only need the 2-byte distance value at offset 4-5.
+ */
+#define PKT_LEN 13
+#define HDR 0xff
+#define TAIL 0xfe
+#define OFF_DATA 1   // sensor data starts here
+#define OFF_ADDR 9   // src_addr: bytes 9-10 (1 + DATA_LEN)
+#define OFF_RSSI 11  // rssi+128: byte 11 (1 + DATA_LEN + 2)
+
+static bool parse_payload(const uint8_t *data, size_t len, char *json,
+                          size_t json_max) {
+  if (len != PKT_LEN || data[0] != HDR || data[PKT_LEN - 1] != TAIL) {
+    ESP_LOGW(MQTT_TAG, "Invalid packet: len=%d, hdr=0x%02x, tail=0x%02x",
+             (int)len, data[0], data[PKT_LEN - 1]);
+    return false;
+  }
+
+  // Distance: 2 bytes LE at offset 4-5 (after 3-byte MPID)
+  uint16_t distance_mm = (uint16_t)data[4] | ((uint16_t)data[5] << 8);
+
+  // Source address: 2 bytes LE at offset 6-7
+  uint16_t src_addr = (uint16_t)data[OFF_ADDR] | ((uint16_t)data[OFF_ADDR + 1] << 8);
+
+  // RSSI: byte at offset 8, stored as (128 + rssi)
+  int8_t rssi = (int8_t)data[OFF_RSSI] - 128;
+
+  // Use system time (NTP-synced) for timestamp
+  time_t now;
+  time(&now);
+  struct tm ti = {0};
+  gmtime_r(&now, &ti);
+
+  snprintf(json, json_max,
+           "{\"timestamp\":\"%04d-%02d-%02dT%02d:%02d:%02dZ\","
+           "\"distance_mm\":%d,"
+           "\"address\":\"0x%04x\","
+           "\"rssi\":%d}",
+           ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour,
+           ti.tm_min, ti.tm_sec, distance_mm, src_addr, rssi);
+  return true;
+}
 
 static void sntp_time_sync_cb(struct timeval *tv) {
   s_time_synced = true;
@@ -45,7 +92,6 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
     mqtt_client = event->client;
-
     break;
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DISCONNECTED");
@@ -79,6 +125,7 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
     break;
   }
 }
+
 void mqtt5_app_start(const app_config_t *cfg) {
   memcpy(&s_mqtt_cfg, cfg, sizeof(s_mqtt_cfg));
   esp_mqtt5_connection_property_config_t connect_property = {
@@ -91,7 +138,6 @@ void mqtt5_app_start(const app_config_t *cfg) {
       .message_expiry_interval = MQTT_MSG_EXPIRY_SEC,
   };
 
-  /* Warn if broker URL is plaintext */
   if (strncmp(cfg->broker_url, "mqtts://", 8) != 0 &&
       strncmp(cfg->broker_url, "wss://", 6) != 0) {
     ESP_LOGW(MQTT_TAG, "Broker URL is not TLS: %s", cfg->broker_url);
@@ -99,9 +145,6 @@ void mqtt5_app_start(const app_config_t *cfg) {
 
   esp_mqtt_client_config_t mqtt5_cfg = {
       .broker.address.uri = cfg->broker_url,
-      .broker.verification.certificate = (const char *)ca_pem_start,
-      .credentials.authentication.certificate = (const char *)cert_pem_start,
-      .credentials.authentication.key = (const char *)key_pem_start,
       .session.protocol_ver = MQTT_PROTOCOL_V_5,
       .network.disable_auto_reconnect = false,
       .session.last_will.topic = cfg->will_topic,
@@ -111,20 +154,30 @@ void mqtt5_app_start(const app_config_t *cfg) {
       .session.last_will.retain = true,
   };
 
-  esp_sntp_config_t sntp_config = {.server_from_dhcp = true,
-                                   .smooth_sync = true,
-                                   .start = true,
-                                   .wait_for_sync = false,
-                                   .sync_cb = sntp_time_sync_cb};
+  bool use_tls = (strncmp(cfg->broker_url, "mqtts://", 8) == 0 ||
+                  strncmp(cfg->broker_url, "wss://", 6) == 0);
+  if (use_tls) {
+    mqtt5_cfg.broker.verification.certificate = (const char *)ca_pem_start;
+    mqtt5_cfg.credentials.authentication.certificate =
+        (const char *)cert_pem_start;
+    mqtt5_cfg.credentials.authentication.key = (const char *)key_pem_start;
+  }
+
+  esp_sntp_config_t sntp_config = {
+      .server_from_dhcp = false,
+      .smooth_sync = true,
+      .start = true,
+      .wait_for_sync = false,
+      .sync_cb = sntp_time_sync_cb,
+      .num_of_servers = 1,
+      .servers = {"pool.ntp.org"},
+  };
   esp_err_t err = esp_netif_sntp_init(&sntp_config);
   if (err != ESP_OK) {
-
     ESP_LOGE(MQTT_TAG, "SNTP init error: %s", esp_err_to_name(err));
   }
 
-  /* Wait for NTP sync before starting MQTT — TLS cert validation needs
-   * correct time.  30s is generous; typical sync is 1-2s on LAN. */
-  if (!s_time_synced) {
+  if (use_tls && !s_time_synced) {
     ESP_LOGI(MQTT_TAG, "Waiting for NTP sync...");
     esp_netif_sntp_sync_wait(pdMS_TO_TICKS(MQTT_NTP_SYNC_TIMEOUT_MS));
     if (!s_time_synced) {
@@ -140,15 +193,9 @@ void mqtt5_app_start(const app_config_t *cfg) {
                                      user_property_arr, USE_PROPERTY_ARR_SIZE);
   esp_mqtt5_client_set_connect_property(client, &connect_property);
 
-  /* If you call esp_mqtt5_client_set_user_property to set user properties, DO
-   * NOT forget to delete them. esp_mqtt5_client_set_connect_property will
-   * malloc buffer to store the user_property and you can delete it after
-   */
   esp_mqtt5_client_delete_user_property(connect_property.user_property);
   esp_mqtt5_client_delete_user_property(connect_property.will_user_property);
 
-  /* The last argument may be used to pass data to the event handler, in this
-   * example mqtt_event_handler */
   esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt5_event_handler,
                                  NULL);
   esp_mqtt_client_start(client);
@@ -160,23 +207,18 @@ void mqtt_callback(const uint8_t *msg, size_t len) {
     return;
   }
 
-  if (!s_time_synced) {
-    ESP_LOGW(MQTT_TAG, "NTP not synced yet, skipping publish");
+  char json[160];
+  if (!parse_payload(msg, len, json, sizeof(json))) {
     return;
   }
 
-  time_t now = 0;
-  struct tm timeinfo = {0};
-  time(&now);
-  localtime_r(&now, &timeinfo);
-  ESP_LOGI(MQTT_TAG, "time: %d-%02d-%02d %02d:%02d", timeinfo.tm_year + 1900,
-           timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour,
-           timeinfo.tm_min);
+  ESP_LOGI(MQTT_TAG, "Publishing: %s", json);
+
   esp_mqtt5_client_set_user_property(&publish_property.user_property,
                                      user_property_arr, USE_PROPERTY_ARR_SIZE);
   esp_mqtt5_client_set_publish_property(mqtt_client, &publish_property);
-  int msg_id = esp_mqtt_client_publish(mqtt_client, s_mqtt_cfg.pub_topic,
-                                       (const char *)msg, len, 1, 1);
+  int msg_id = esp_mqtt_client_publish(mqtt_client, s_mqtt_cfg.pub_topic, json,
+                                       0, 1, 1);
 
   esp_mqtt5_client_delete_user_property(publish_property.user_property);
   publish_property.user_property = NULL;

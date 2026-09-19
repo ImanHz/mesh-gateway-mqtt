@@ -2,31 +2,31 @@ menu "Default Configuration"
 
     config DEFAULT_WIFI_SSID
         string "Default WiFi SSID"
-        default ""
+        default "TP-Link_7069"
         help
             Fallback WiFi SSID if not provisioned via SoftAP.
 
     config DEFAULT_WIFI_PASSWORD
         string "Default WiFi Password"
-        default ""
+        default "85784918"
         help
             Fallback WiFi password if not provisioned via SoftAP.
 
     config DEFAULT_BROKER_URL
         string "Default MQTT Broker URL"
-        default "mqtt://192.168.1.9:1883"
+        default "mqtt://192.168.1.12:1883"
         help
             Fallback MQTT broker URL if not provisioned via SoftAP.
 
     config DEFAULT_PUB_TOPIC
         string "Default Publish Topic"
-        default "/topic/qos1"
+        default "site/tank-sensor-01/telemetry"
         help
             Fallback MQTT publish topic if not provisioned via SoftAP.
 
     config DEFAULT_WILL_TOPIC
         string "Default Will Topic"
-        default "/topic/will"
+        default "site/tank-sensor-01/status"
         help
             Fallback MQTT will topic if not provisioned via SoftAP.
 

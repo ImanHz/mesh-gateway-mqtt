@@ -117,10 +117,15 @@ static void stop_prov_wifi(void) {
     esp_netif_destroy_default_wifi(s_ap_netif);
     s_ap_netif = NULL;
   }
+  esp_wifi_deinit();
 }
 
 esp_err_t provision_start(void) {
   ESP_LOGW(TAG, "Entering provisioning mode (5 min timeout)");
+
+  // Initialize WiFi driver (needed before any esp_wifi_* calls)
+  wifi_init_config_t wifi_cfg = WIFI_INIT_CONFIG_DEFAULT();
+  ESP_ERROR_CHECK(esp_wifi_init(&wifi_cfg));
 
   // Create AP netif
   s_ap_netif = esp_netif_create_default_wifi_ap();

@@ -7,24 +7,34 @@
 static const char *TAG = "CONFIG";
 
 static void load_str(nvs_handle_t h, const char *key, char *out, size_t max) {
-  size_t len = max;
-  if (nvs_get_str(h, key, out, &len) != ESP_OK) {
-    out[0] = '\0';
+  char tmp[128];
+  size_t len = sizeof(tmp);
+  if (nvs_get_str(h, key, tmp, &len) == ESP_OK && tmp[0] != '\0') {
+    strncpy(out, tmp, max);
   }
+  // Otherwise keep the Kconfig default already in 'out'
 }
 
 bool config_read(app_config_t *cfg) {
+  // Start with Kconfig defaults
+  strncpy(cfg->ssid, CONFIG_DEFAULT_WIFI_SSID, sizeof(cfg->ssid));
+  strncpy(cfg->password, CONFIG_DEFAULT_WIFI_PASSWORD, sizeof(cfg->password));
+  strncpy(cfg->broker_url, CONFIG_DEFAULT_BROKER_URL, sizeof(cfg->broker_url));
+  strncpy(cfg->pub_topic, CONFIG_DEFAULT_PUB_TOPIC, sizeof(cfg->pub_topic));
+  strncpy(cfg->will_topic, CONFIG_DEFAULT_WILL_TOPIC, sizeof(cfg->will_topic));
+
   nvs_handle_t h;
   if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) {
-    return false;
+    ESP_LOGI(TAG, "Using Kconfig defaults");
+    return true;
   }
 
-  uint8_t provisioned = 0;
-  if (nvs_get_u8(h, NVS_KEY_PROVISIONED, &provisioned) != ESP_OK ||
-      !provisioned) {
-    nvs_close(h);
-    return false;
-  }
+  // uint8_t provisioned = 0;
+  // if (nvs_get_u8(h, NVS_KEY_PROVISIONED, &provisioned) != ESP_OK ||
+  //     !provisioned) {
+  //   nvs_close(h);
+  //   return false;
+  // }
 
   load_str(h, NVS_KEY_SSID, cfg->ssid, sizeof(cfg->ssid));
   load_str(h, NVS_KEY_PASSWORD, cfg->password, sizeof(cfg->password));

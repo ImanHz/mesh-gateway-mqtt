@@ -22,25 +22,24 @@ void app_main(void) {
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  // Check if reset button is held → force provisioning
-  bool button_held = provision_button_held();
-  if (button_held) {
-    ESP_LOGW(TAG, "Reset button held, clearing provisioning config");
-    config_clear_provisioned();
-  }
+  // // Check if reset button is held → force provisioning
+  // bool button_held = provision_button_held();
+  // if (button_held) {
+  //   ESP_LOGW(TAG, "Reset button held, clearing provisioning config");
+  //   config_clear_provisioned();
+  // }
 
   // Load config from NVS (or defaults)
   app_config_t cfg = {0};
   bool provisioned = config_read(&cfg);
 
   if (!provisioned) {
-    if (button_held) {
-      ESP_LOGW(TAG, "Not provisioned, entering provisioning mode");
-      provision_start(); // blocks until done, then restarts
-      return;           // unreachable
-    }
-    ESP_LOGE(TAG, "Not provisioned and reset button not held. "
-                  "Hold reset button to enter provisioning mode.");
+    // if (button_held) {
+    //   ESP_LOGW(TAG, "Not provisioned, entering provisioning mode");
+    //   provision_start(); // blocks until done, then restarts
+    //   return;           // unreachable
+    // }
+    ESP_LOGE(TAG, "Not provisioned. Hold reset button to enter provisioning mode.");
     return;
   }
 
