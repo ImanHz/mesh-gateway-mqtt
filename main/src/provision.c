@@ -40,6 +40,7 @@ static void button_task(void *arg) {
     // Wait for button press (HIGH)
     if (gpio_get_level(RESET_GPIO) == 1) {
       int64_t press_start = esp_timer_get_time();
+      ESP_LOGI(TAG, "Button pressed, detecting hold...");
       // Hold detection: sample every 100ms, require continuous HIGH
       while (gpio_get_level(RESET_GPIO) == 1) {
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -49,10 +50,11 @@ static void button_task(void *arg) {
                    held);
           if (s_on_provision_cb)
             s_on_provision_cb();
-          // After provision_start returns (timeout or user abandoned),
-          // restart services. Button task resumes monitoring.
           break;
         }
+        // Debug: log every 2s
+        if ((held % 2000) < 110)
+          ESP_LOGI(TAG, "Holding... %lldms", held);
       }
     }
     vTaskDelay(pdMS_TO_TICKS(200));
