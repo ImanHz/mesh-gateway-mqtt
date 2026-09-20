@@ -8,6 +8,10 @@
 static const char *TAG = "UART";
 const uint16_t c_uart_rx_timeout = UART_RX_TIMEOUT;
 
+static volatile bool s_uart_running = false;
+static TaskHandle_t s_rx_task_handle = NULL;
+static TaskHandle_t s_cb_task_handle = NULL;
+
 static void uart_rx_task(void *arg) {
   uart_task_params_t *params = (uart_task_params_t *)arg;
 
@@ -17,10 +21,10 @@ static void uart_rx_task(void *arg) {
     vTaskDelete(NULL);
   }
 
-  while (1) {
+  while (s_uart_running) {
     int rxBytes = uart_read_bytes(UART_NUM_1, buf, RX_BUF_SIZE,
                                   (c_uart_rx_timeout) / portTICK_PERIOD_MS);
-    if (rxBytes > 0) {
+    if (rxBytes > 0 && s_uart_running) {
       ESP_LOGI(TAG, "Read %d bytes", rxBytes);
       ESP_LOG_BUFFER_HEX("RX", buf, rxBytes);
 
@@ -51,15 +55,17 @@ static void uart_rx_task(void *arg) {
 static void uart_callback_task(void *arg) {
   uart_task_params_t *params = (uart_task_params_t *)arg;
   uart_msg_t msg = {};
-  while (1) {
-    if (xQueueReceive(params->queue, &msg, portMAX_DELAY)) {
-      if (params->callback) {
+  while (s_uart_running) {
+    if (xQueueReceive(params->queue, &msg, pdMS_TO_TICKS(500))) {
+      if (s_uart_running && params->callback) {
         params->callback(msg.data, msg.len);
       }
       free(msg.data);
     }
   }
+  vTaskDelete(NULL);
 }
+
 void uart_init(uart_callback_t callback) {
   const uart_config_t uart_config = {
       .baud_rate = UART_BAUDRATE,
@@ -69,7 +75,6 @@ void uart_init(uart_callback_t callback) {
       .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
       .source_clk = UART_SCLK_DEFAULT,
   };
-  // We won't use a buffer for sending data.
   esp_err_t uart_error =
       uart_driver_install(UART_NUM, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
   if (uart_error != ESP_OK) {
@@ -78,18 +83,35 @@ void uart_init(uart_callback_t callback) {
   uart_param_config(UART_NUM, &uart_config);
   uart_set_pin(UART_NUM, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE,
                UART_PIN_NO_CHANGE);
-  // Allocate parameters
+
   uart_task_params_t *params = malloc(sizeof(uart_task_params_t));
-  params->queue = xQueueCreate(10, sizeof(uart_msg_t)); // queue depth = 10
+  params->queue = xQueueCreate(10, sizeof(uart_msg_t));
   params->callback = callback;
 
-  // Start tasks
+  s_uart_running = true;
   xTaskCreate(uart_rx_task, "uart_rx_task", RX_TASK_SIZE, params,
-              configMAX_PRIORITIES - 1, NULL);
-
+              configMAX_PRIORITIES - 1, &s_rx_task_handle);
   xTaskCreate(uart_callback_task, "uart_callback_task", RX_TASK_SIZE, params,
-              configMAX_PRIORITIES - 2, NULL);
+              configMAX_PRIORITIES - 2, &s_cb_task_handle);
   ESP_LOGI(TAG, "uart init successful");
+}
+
+void uart_stop(void) {
+  ESP_LOGI(TAG, "Stopping UART");
+  s_uart_running = false;
+
+  // Wait for tasks to exit
+  if (s_rx_task_handle) {
+    vTaskDelay(pdMS_TO_TICKS(200)); // let task exit its loop
+    s_rx_task_handle = NULL;
+  }
+  if (s_cb_task_handle) {
+    vTaskDelay(pdMS_TO_TICKS(200));
+    s_cb_task_handle = NULL;
+  }
+
+  uart_driver_delete(UART_NUM);
+  ESP_LOGI(TAG, "UART stopped");
 }
 
 int uart_send_data(const char *data, size_t len) {

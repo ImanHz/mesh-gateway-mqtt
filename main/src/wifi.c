@@ -158,15 +158,16 @@ esp_err_t wifi_sta_do_connect(wifi_config_t wifi_config, bool wait) {
 }
 
 esp_err_t wifi_sta_do_disconnect(void) {
-  ESP_ERROR_CHECK(esp_event_handler_unregister(
-      WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &handler_on_wifi_disconnect));
-  ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                               &handler_on_sta_got_ip));
-  ESP_ERROR_CHECK(esp_event_handler_unregister(
-      WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &handler_on_wifi_connect));
+  // Ignore errors — handlers may already be unregistered by wifi stack
+  esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED,
+                               &handler_on_wifi_disconnect);
+  esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                               &handler_on_sta_got_ip);
+  esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_STA_CONNECTED,
+                               &handler_on_wifi_connect);
 #if CONFIG_CONNECT_IPV6
-  ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_GOT_IP6,
-                                               &handler_on_sta_got_ipv6));
+  esp_event_handler_unregister(IP_EVENT, IP_EVENT_GOT_IP6,
+                               &handler_on_sta_got_ipv6);
 #endif
   return esp_wifi_disconnect();
 }

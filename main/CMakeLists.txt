@@ -9,5 +9,5 @@ idf_component_register(SRCS "main.c"
                                      "${CMAKE_SOURCE_DIR}/certs/cert.pem"
                                      "${CMAKE_SOURCE_DIR}/certs/key.pem"
                        PRIV_REQUIRES mqtt nvs_flash esp_netif
-                                     esp_wifi esp_http_server protocomm
+                                     esp_wifi esp_http_server
                                      esp_driver_gpio esp_driver_uart)

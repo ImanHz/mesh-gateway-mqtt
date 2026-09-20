@@ -17,6 +17,7 @@
 #define MQTT_NTP_SYNC_TIMEOUT_MS 30000
 
 void mqtt5_app_start(const app_config_t *cfg);
+void mqtt5_stop(void);
 void mqtt_callback(const uint8_t *msg, size_t len);
 
 #endif // INCLUDE_MQTT_H_

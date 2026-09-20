@@ -224,3 +224,12 @@ void mqtt_callback(const uint8_t *msg, size_t len) {
   publish_property.user_property = NULL;
   ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id=%d", msg_id);
 }
+
+void mqtt5_stop(void) {
+  if (mqtt_client) {
+    ESP_LOGI(MQTT_TAG, "Stopping MQTT client");
+    esp_mqtt_client_stop(mqtt_client);
+    esp_mqtt_client_destroy(mqtt_client);
+    mqtt_client = NULL;
+  }
+}

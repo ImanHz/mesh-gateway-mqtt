@@ -38,6 +38,9 @@ typedef struct {
 // initializes the UART peripheral
 void uart_init(uart_callback_t);
 
+// Stops UART tasks and uninstalls driver
+void uart_stop(void);
+
 // helper function to send data
 int uart_send_data(const char *data, size_t len);
 

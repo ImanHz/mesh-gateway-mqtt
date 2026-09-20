@@ -12,22 +12,11 @@ menu "Default Configuration"
         help
             Fallback WiFi password if not provisioned via SoftAP.
 
-    config DEFAULT_BROKER_URL
-        string "Default MQTT Broker URL"
-        default "mqtt://192.168.1.12:1883"
+    config DEFAULT_BROKER_ADDR
+        string "Default Broker Address"
+        default "192.168.1.12"
         help
-            Fallback MQTT broker URL if not provisioned via SoftAP.
-
-    config DEFAULT_PUB_TOPIC
-        string "Default Publish Topic"
-        default "site/tank-sensor-01/telemetry"
-        help
-            Fallback MQTT publish topic if not provisioned via SoftAP.
-
-    config DEFAULT_WILL_TOPIC
-        string "Default Will Topic"
-        default "site/tank-sensor-01/status"
-        help
-            Fallback MQTT will topic if not provisioned via SoftAP.
+            Fallback MQTT broker IP or hostname. Topics are derived from
+            device MAC: site/<mac>/telemetry, site/<mac>/cmd, site/<mac>/status.
 
 endmenu

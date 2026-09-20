@@ -13,6 +13,18 @@
 #include "uart.h"
 #include "wifi.h"
 
+static app_config_t s_cfg;
+
+// Called by button task when held 5s — stop all services, set flag, restart
+static void on_button_provision(void) {
+  ESP_LOGW(TAG, "Button held — stopping services, restarting into provisioning");
+  mqtt5_stop();
+  uart_stop();
+  wifi_shutdown();
+  config_set_reprov_flag();
+  esp_restart();
+}
+
 void app_main(void) {
   ESP_LOGI(TAG, "[APP] Startup..");
   ESP_LOGI(TAG, "[APP] Free memory: %" PRIu32 " bytes",
@@ -22,35 +34,37 @@ void app_main(void) {
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  // // Check if reset button is held → force provisioning
-  // bool button_held = provision_button_held();
-  // if (button_held) {
-  //   ESP_LOGW(TAG, "Reset button held, clearing provisioning config");
-  //   config_clear_provisioned();
-  // }
+  // Check if reprov flag is set (button-triggered restart)
+  if (config_get_reprov_flag()) {
+    config_clear_reprov_flag();
+    ESP_LOGW(TAG, "Re-provisioning flag set, entering provisioning mode");
+    provision_start(); // blocks until form submitted or button cancel, then restarts
+    return;           // unreachable
+  }
 
   // Load config from NVS (or defaults)
-  app_config_t cfg = {0};
-  bool provisioned = config_read(&cfg);
+  bool provisioned = config_read(&s_cfg);
 
   if (!provisioned) {
-    // if (button_held) {
-    //   ESP_LOGW(TAG, "Not provisioned, entering provisioning mode");
-    //   provision_start(); // blocks until done, then restarts
-    //   return;           // unreachable
-    // }
-    ESP_LOGE(TAG, "Not provisioned. Hold reset button to enter provisioning mode.");
-    return;
+    ESP_LOGW(TAG, "Not provisioned, entering provisioning mode");
+    provision_start(); // blocks until form submitted or button cancel, then restarts
+    return;           // unreachable
   }
+
+  // Build broker URL and topics from broker_addr + device MAC
+  config_build_derived(&s_cfg);
 
   // Normal boot: start UART, WiFi, MQTT
   uart_init(mqtt_callback);
 
-  if (wifi_connect(&cfg) != ESP_OK) {
+  if (wifi_connect(&s_cfg) != ESP_OK) {
     ESP_LOGE(TAG, "WIFI CONNECT ERROR");
     return;
   }
   ESP_ERROR_CHECK(esp_register_shutdown_handler(&wifi_shutdown));
 
-  mqtt5_app_start(&cfg);
+  mqtt5_app_start(&s_cfg);
+
+  // Start background button monitor (5s hold → re-provision via restart)
+  provision_button_task(on_button_provision);
 }
