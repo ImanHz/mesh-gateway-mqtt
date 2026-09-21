@@ -38,8 +38,11 @@ void app_main(void) {
   if (config_get_reprov_flag()) {
     config_clear_reprov_flag();
     ESP_LOGW(TAG, "Re-provisioning flag set, entering provisioning mode");
-    provision_start(); // blocks until form submitted or button cancel, then restarts
-    return;           // unreachable
+    provision_start();
+    // Timeout or cancel — restart to resume normal operation
+    ESP_LOGW(TAG, "Provisioning ended, restarting");
+    esp_restart();
+    return;
   }
 
   // Load config from NVS (or defaults)
@@ -47,8 +50,11 @@ void app_main(void) {
 
   if (!provisioned) {
     ESP_LOGW(TAG, "Not provisioned, entering provisioning mode");
-    provision_start(); // blocks until form submitted or button cancel, then restarts
-    return;           // unreachable
+    provision_start();
+    // Timeout or cancel — restart to try again
+    ESP_LOGW(TAG, "Provisioning ended, restarting");
+    esp_restart();
+    return;
   }
 
   // Build broker URL and topics from broker_addr + device MAC

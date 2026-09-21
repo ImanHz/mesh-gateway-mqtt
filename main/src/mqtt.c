@@ -92,6 +92,13 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
     mqtt_client = event->client;
+    // Subscribe to command topic
+    if (s_mqtt_cfg.sub_topic[0] != '\0') {
+      int msg_id = esp_mqtt_client_subscribe(mqtt_client,
+                                             s_mqtt_cfg.sub_topic, 1);
+      ESP_LOGI(MQTT_TAG, "Subscribed to %s, msg_id=%d",
+               s_mqtt_cfg.sub_topic, msg_id);
+    }
     break;
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DISCONNECTED");
@@ -110,6 +117,14 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA");
     ESP_LOGI(MQTT_TAG, "TOPIC=%.*s", event->topic_len, event->topic);
     ESP_LOGI(MQTT_TAG, "DATA=%.*s", event->data_len, event->data);
+
+    // Check if this is a command on our sub_topic
+    if (s_mqtt_cfg.sub_topic[0] != '\0' &&
+        event->topic_len == strlen(s_mqtt_cfg.sub_topic) &&
+        strncmp(event->topic, s_mqtt_cfg.sub_topic, event->topic_len) == 0) {
+      ESP_LOGI(MQTT_TAG, "Command received on %s", s_mqtt_cfg.sub_topic);
+      // TODO: parse JSON command and forward to UART
+    }
     break;
   case MQTT_EVENT_ERROR:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
