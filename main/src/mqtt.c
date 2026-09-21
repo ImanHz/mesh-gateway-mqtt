@@ -14,6 +14,10 @@ static esp_mqtt_client_handle_t mqtt_client = NULL;
 static volatile bool s_time_synced = false;
 static app_config_t s_mqtt_cfg;
 
+// Buffered telemetry for early UART packets (before MQTT connects)
+static uint8_t s_telemetry_buf[CMD_PKT_LEN] = {0};
+static size_t s_telemetry_len = 0;
+
 extern const uint8_t ca_pem_start[] asm("_binary_ca_pem_start");
 extern const uint8_t cert_pem_start[] asm("_binary_cert_pem_start");
 extern const uint8_t key_pem_start[] asm("_binary_key_pem_start");
@@ -370,6 +374,16 @@ static void mqtt5_event_handler(void *handler_args, esp_event_base_t base,
       ESP_LOGI(MQTT_TAG, "Subscribed to %s, msg_id=%d",
                s_mqtt_cfg.sub_topic, msg_id);
     }
+    // Publish any telemetry buffered before MQTT was ready
+    if (s_telemetry_len > 0) {
+      ESP_LOGI(MQTT_TAG, "Publishing buffered telemetry (%d bytes)",
+               (int)s_telemetry_len);
+      char json[160];
+      if (parse_payload(s_telemetry_buf, s_telemetry_len, json, sizeof(json))) {
+        mqtt_publish(s_mqtt_cfg.pub_topic, json);
+      }
+      s_telemetry_len = 0;
+    }
     break;
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DISCONNECTED");
@@ -491,8 +505,14 @@ void mqtt5_app_start(const app_config_t *cfg) {
 }
 
 void mqtt_telemetry_callback(const uint8_t *msg, size_t len) {
+  // Always buffer latest telemetry (for publish on MQTT connect)
+  size_t copy_len = len < CMD_PKT_LEN ? len : CMD_PKT_LEN;
+  memcpy(s_telemetry_buf, msg, copy_len);
+  s_telemetry_len = copy_len;
+
   if (!mqtt_client) {
-    ESP_LOGE(MQTT_TAG, "telemetry: no client");
+    ESP_LOGD(MQTT_TAG, "telemetry: no client yet, buffered %d bytes",
+             (int)copy_len);
     return;
   }
 
