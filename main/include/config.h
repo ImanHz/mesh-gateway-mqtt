@@ -17,7 +17,7 @@ typedef struct {
   char broker_addr[64];   // IP or hostname (user-provided)
   char broker_url[128];   // derived: mqtt://<addr>:1883
   char pub_topic[64];     // derived: site/<mac>/telemetry
-  char sub_topic[64];     // derived: site/<mac>/cmd
+  char sub_topic[64];     // derived: site/+/cmd (wildcard for all mesh nodes)
   char will_topic[64];    // derived: site/<mac>/status
 } app_config_t;
 

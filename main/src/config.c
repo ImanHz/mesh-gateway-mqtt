@@ -116,7 +116,7 @@ void config_build_derived(app_config_t *cfg) {
 
   snprintf(cfg->pub_topic, sizeof(cfg->pub_topic), "site/%s/telemetry",
            mac_str);
-  snprintf(cfg->sub_topic, sizeof(cfg->sub_topic), "site/%s/cmd", mac_str);
+  snprintf(cfg->sub_topic, sizeof(cfg->sub_topic), "site/+/cmd");
   snprintf(cfg->will_topic, sizeof(cfg->will_topic), "site/%s/status",
            mac_str);
 
